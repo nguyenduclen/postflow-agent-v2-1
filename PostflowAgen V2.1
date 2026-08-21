@@ -1,0 +1,173 @@
+name: Build PostFlow Agent V2.1 APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Find and extract V2.1 project
+        run: |
+          echo "================================"
+          echo "FILES IN REPOSITORY"
+          echo "================================"
+
+          find . -maxdepth 3 -type f -print | sort
+
+          echo "================================"
+          echo "SEARCHING ZIP FILE"
+          echo "================================"
+
+          ZIP_FILE=$(find . \
+            -type f \
+            -iname "*.zip" \
+            -not -path "./build-project/*" \
+            -print \
+            -quit)
+
+          echo "ZIP_FILE=$ZIP_FILE"
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: KHONG TIM THAY FILE ZIP"
+            exit 1
+          fi
+
+          echo "================================"
+          echo "EXTRACTING ZIP"
+          echo "================================"
+
+          rm -rf build-project
+          mkdir -p build-project
+
+          unzip -q "$ZIP_FILE" -d build-project
+
+          echo "================================"
+          echo "EXTRACTED FILES"
+          echo "================================"
+
+          find build-project -maxdepth 6 -type f -print | sort
+
+      - name: Find Android Gradle project
+        run: |
+          echo "================================"
+          echo "SEARCHING ANDROID PROJECT"
+          echo "================================"
+
+          PROJECT_DIR=""
+
+          SETTINGS_FILE=$(find build-project \
+            -type f \
+            \( -name "settings.gradle" -o -name "settings.gradle.kts" \) \
+            -print \
+            -quit)
+
+          if [ -n "$SETTINGS_FILE" ]; then
+            PROJECT_DIR=$(dirname "$SETTINGS_FILE")
+          fi
+
+          echo "SETTINGS_FILE=$SETTINGS_FILE"
+          echo "PROJECT_DIR=$PROJECT_DIR"
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "ERROR: KHONG TIM THAY settings.gradle"
+            echo "=== DIRECTORY TREE ==="
+            find build-project -maxdepth 6 -type d -print | sort
+            exit 1
+          fi
+
+          if [ ! -d "$PROJECT_DIR/app" ]; then
+            echo "ERROR: KHONG TIM THAY THU MUC app"
+            echo "PROJECT_DIR=$PROJECT_DIR"
+            find "$PROJECT_DIR" -maxdepth 3 -type d -print | sort
+            exit 1
+          fi
+
+          echo "ANDROID PROJECT FOUND:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Show Android project
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "================================"
+          echo "ANDROID PROJECT"
+          echo "================================"
+
+          pwd
+
+          echo "=== PROJECT FILES ==="
+          find . -maxdepth 3 -type f -print | sort
+
+          echo "=== GRADLE VERSION ==="
+          gradle --version
+
+      - name: Build APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "================================"
+          echo "BUILDING APK"
+          echo "================================"
+
+          gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: |
+          echo "================================"
+          echo "VERIFY APK"
+          echo "================================"
+
+          APK="app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "ERROR: APK KHONG DUOC TAO"
+
+            echo "=== BUILD OUTPUT ==="
+            find app/build -type f -print | sort || true
+
+            exit 1
+          fi
+
+          echo "================================"
+          echo "APK CREATED SUCCESSFULLY"
+          echo "================================"
+
+          ls -lh "$APK"
+
+          echo "APK SIZE:"
+          du -h "$APK"
+
+          echo "APK FILE TYPE:"
+          file "$APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: postflow-agent-v2-1-apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
