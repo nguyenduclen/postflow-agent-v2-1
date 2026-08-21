@@ -17,7 +17,7 @@ jobs:
       - name: Extract V2.1 project
         run: |
           mkdir build-project
-          unzip -q postflow-agent-v2-1-github-actions.zip -d build-project
+          unzip -q postflow-agent-v2.1-github-actions.zip -d build-project
 
           echo "=== EXTRACTED FILES ==="
           find build-project -maxdepth 4 -type f | sort
